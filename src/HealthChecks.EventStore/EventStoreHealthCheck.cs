@@ -14,38 +14,44 @@ namespace HealthChecks.EventStore
         const int ELAPSED_DELAY_MILLISECONDS = 500;
         const int RECONNECTION_LIMIT = 1;
 
-        private readonly string _eventStoreConnection;
-        private readonly string _login;
-        private readonly string _password;
-        public EventStoreHealthCheck(string eventStoreConnection, string login, string password)
+        private readonly string _eventStoreConnectionString;
+        private readonly ConnectionSettingsBuilder _eventStoreConnectionSettings;
+
+        public EventStoreHealthCheck(string eventStoreConnectionString, string login, string password)
         {
-            _eventStoreConnection = eventStoreConnection ?? throw new ArgumentNullException(nameof(eventStoreConnection));
-            _login = login;
-            _password = password;
+            _eventStoreConnectionString = eventStoreConnectionString ?? throw new ArgumentNullException(nameof(eventStoreConnectionString));
+            _eventStoreConnectionSettings = CreateDefaultSettings(login, password);
         }
+
+        public EventStoreHealthCheck(string eventStoreConnectionString, ConnectionSettingsBuilder eventStoreConnectionSettings)
+        {
+            _eventStoreConnectionString = eventStoreConnectionString ?? throw new ArgumentNullException(nameof(eventStoreConnectionString));
+            _eventStoreConnectionSettings = eventStoreConnectionSettings ?? throw new ArgumentNullException(nameof(eventStoreConnectionSettings));
+        }
+
+        private ConnectionSettingsBuilder CreateDefaultSettings(string login, string password) {
+            if (string.IsNullOrEmpty(login) || string.IsNullOrEmpty(password))
+            {
+                return ConnectionSettings.Create()
+                    .LimitReconnectionsTo(RECONNECTION_LIMIT)
+                    .SetReconnectionDelayTo(TimeSpan.FromMilliseconds(ELAPSED_DELAY_MILLISECONDS));
+            }
+            else
+            {
+                return ConnectionSettings.Create()
+                    .LimitReconnectionsTo(RECONNECTION_LIMIT)
+                    .SetReconnectionDelayTo(TimeSpan.FromMilliseconds(ELAPSED_DELAY_MILLISECONDS))
+                    .SetDefaultUserCredentials(new UserCredentials(login, password));
+            }
+        }
+
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             try
             {
-                ConnectionSettingsBuilder connectionSettings;
-
-                if (string.IsNullOrEmpty(_login) || string.IsNullOrEmpty(_password))
-                {
-                    connectionSettings = ConnectionSettings.Create()
-                        .LimitReconnectionsTo(RECONNECTION_LIMIT)
-                        .SetReconnectionDelayTo(TimeSpan.FromMilliseconds(ELAPSED_DELAY_MILLISECONDS));
-                }
-                else
-                {
-                    connectionSettings = ConnectionSettings.Create()
-                        .LimitReconnectionsTo(RECONNECTION_LIMIT)
-                        .SetReconnectionDelayTo(TimeSpan.FromMilliseconds(ELAPSED_DELAY_MILLISECONDS))
-                        .SetDefaultUserCredentials(new UserCredentials(_login, _password));
-                }
-
                 using (var connection = EventStoreConnection.Create(
-                    _eventStoreConnection,
-                    connectionSettings,
+                    _eventStoreConnectionString,
+                    _eventStoreConnectionSettings,
                     CONNECTION_NAME))
                 {
                     var tcs = new TaskCompletionSource<HealthCheckResult>();
